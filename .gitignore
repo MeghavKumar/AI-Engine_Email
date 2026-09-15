@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment variables
+.env
+
+# OAuth credentials
+credentials.json
+gmail_token.json
+token.json
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+# Test/cache
+.pytest_cache/
+.ruff_cache/
+ai_email_engine.egg-info/
