@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime
+from email.message import EmailMessage as MimeEmailMessage
 from email.utils import parsedate_to_datetime
 
 from google.oauth2.credentials import Credentials
@@ -190,9 +191,42 @@ class GmailProvider(EmailProvider):
         account_id: str,
         message: dict,
     ) -> str:
-        raise NotImplementedError(
-            "Gmail sending is disabled until approval controls are implemented."
+        """Send a plain-text email through Gmail."""
+        mime_message = MimeEmailMessage()
+
+        to = message.get("to", [])
+        cc = message.get("cc", [])
+        bcc = message.get("bcc", [])
+
+        if not to:
+            raise ValueError("At least one recipient is required.")
+
+        mime_message["To"] = ", ".join(to)
+
+        if cc:
+            mime_message["Cc"] = ", ".join(cc)
+
+        if bcc:
+            mime_message["Bcc"] = ", ".join(bcc)
+
+        mime_message["Subject"] = message.get("subject", "")
+        mime_message.set_content(message.get("body", ""))
+
+        encoded_message = base64.urlsafe_b64encode(
+            mime_message.as_bytes()
+        ).decode("utf-8")
+
+        response = (
+            self.service.users()
+            .messages()
+            .send(
+                userId="me",
+                body={"raw": encoded_message},
+            )
+            .execute()
         )
+
+        return response["id"]
 
     def mark_read(
         self,
