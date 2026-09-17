@@ -27,3 +27,4 @@ token.json
 ai_email_engine.egg-info/
 
 gmail_token.readonly.backup.json
+gmail_token.send.backup.json
