@@ -56,6 +56,10 @@ class EmailSendService:
             ],
             "subject": state.draft.subject,
             "body": state.draft.body,
+            "attachments": [
+                attachment
+                for attachment in state.attachments
+            ],
         }
 
         return self.provider.send_message(

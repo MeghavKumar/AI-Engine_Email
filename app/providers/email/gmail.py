@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime
+from pathlib import Path
 from email.message import EmailMessage as MimeEmailMessage
 from email.utils import parsedate_to_datetime
 
@@ -211,6 +212,32 @@ class GmailProvider(EmailProvider):
 
         mime_message["Subject"] = message.get("subject", "")
         mime_message.set_content(message.get("body", ""))
+
+        attachments = message.get("attachments", [])
+
+        for attachment in attachments:
+            file_path = Path(attachment.file_path)
+
+            if not file_path.is_file():
+                raise ValueError(
+                    f"Attachment file does not exist: {file_path}"
+                )
+
+            content_type = attachment.content_type
+
+            if "/" not in content_type:
+                raise ValueError(
+                    f"Invalid attachment content type: {content_type}"
+                )
+
+            maintype, subtype = content_type.split("/", 1)
+
+            mime_message.add_attachment(
+                file_path.read_bytes(),
+                maintype=maintype,
+                subtype=subtype,
+                filename=attachment.filename,
+            )
 
         encoded_message = base64.urlsafe_b64encode(
             mime_message.as_bytes()

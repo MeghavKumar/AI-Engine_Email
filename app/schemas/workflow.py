@@ -1,7 +1,8 @@
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.schemas.email_attachment import EmailAttachment
 from app.schemas.attachment import (
     AttachmentVerificationResult,
     AttachmentVerificationRequest,
@@ -49,6 +50,10 @@ class EmailWorkflowState(BaseModel):
     attachment_verification_result: (
         AttachmentVerificationResult | None
     ) = None
+
+    attachments: list[EmailAttachment] = Field(
+        default_factory=list
+    )
 
     attachment_action_request: (
         AttachmentVerificationRequest | None
