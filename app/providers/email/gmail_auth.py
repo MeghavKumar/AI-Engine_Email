@@ -9,7 +9,7 @@ class GmailAuth:
     """Handle local Gmail OAuth authentication."""
 
     SCOPES = [
-        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.send",
     ]
 
     def __init__(

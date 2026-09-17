@@ -25,3 +25,5 @@ token.json
 .pytest_cache/
 .ruff_cache/
 ai_email_engine.egg-info/
+
+gmail_token.readonly.backup.json
