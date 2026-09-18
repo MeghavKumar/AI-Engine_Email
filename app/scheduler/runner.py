@@ -3,6 +3,8 @@ from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.scheduler.schema import ScheduledJob
+
 
 class SchedulerRunner:
     """Manage application background jobs with APScheduler."""
@@ -32,4 +34,19 @@ class SchedulerRunner:
             args=args,
             id=job_id,
             replace_existing=True,
+        )
+
+    def schedule_job(
+        self,
+        job: ScheduledJob,
+        callback: Callable,
+        *args,
+    ) -> None:
+        """Schedule a persisted job using its scheduled timestamp."""
+
+        self.schedule_once(
+            job_id=job.id,
+            run_at=job.scheduled_for,
+            callback=callback,
+            *args,
         )

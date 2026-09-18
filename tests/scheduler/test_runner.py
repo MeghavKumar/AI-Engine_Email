@@ -1,4 +1,3 @@
-import time
 from datetime import datetime, timedelta, timezone
 from threading import Event
 
@@ -60,3 +59,44 @@ def test_scheduler_can_start_and_shutdown():
         runner.shutdown()
 
     assert runner.scheduler.running is False
+
+
+def test_schedule_job_uses_scheduled_job_timestamp():
+    from app.scheduler.schema import (
+        ScheduledJob,
+        ScheduledJobType,
+    )
+
+    runner = SchedulerRunner()
+    completed = Event()
+
+    try:
+        scheduled_for = (
+            datetime.now(timezone.utc)
+            + timedelta(seconds=0.2)
+        )
+
+        job = ScheduledJob(
+            id="job-789",
+            user_id="user-123",
+            job_type=ScheduledJobType.FOLLOW_UP_CHECK,
+            email_thread_id="thread-123",
+            scheduled_for=scheduled_for,
+            created_at=datetime.now(timezone.utc),
+        )
+
+        runner.schedule_job(
+            job=job,
+            callback=completed.set,
+        )
+
+        scheduled = runner.scheduler.get_job("job-789")
+
+        assert scheduled is not None
+        assert scheduled.id == "job-789"
+
+        runner.start()
+
+        assert completed.wait(timeout=2)
+    finally:
+        runner.shutdown()
