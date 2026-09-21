@@ -54,3 +54,27 @@ def test_reminder_status_can_be_updated():
     reminder.status = ReminderStatus.APPROVED
 
     assert reminder.status == ReminderStatus.APPROVED
+
+
+def test_reminder_defaults_to_no_attachment_required():
+    reminder = ReminderDraft(
+        to=["recipient@example.com"],
+        subject="Following up",
+        body="Just following up.",
+    )
+
+    assert reminder.attachment_required is False
+    assert reminder.attachment_names == []
+
+
+def test_reminder_can_require_attachments():
+    reminder = ReminderDraft(
+        to=["recipient@example.com"],
+        subject="Following up",
+        body="Please see the attached document.",
+        attachment_required=True,
+        attachment_names=["document.pdf"],
+    )
+
+    assert reminder.attachment_required is True
+    assert reminder.attachment_names == ["document.pdf"]
