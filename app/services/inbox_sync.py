@@ -14,6 +14,9 @@ from app.schemas.provider import EmailMessage
 from app.schemas.sync import SyncPage
 
 
+MAX_SYNC_ATTEMPTS = 3
+
+
 class InboxSyncService:
     """Provider-independent service for synchronizing an email inbox."""
 
@@ -155,7 +158,7 @@ class InboxSyncService:
 
         try:
             while True:
-                changes = self.provider.sync_changes(
+                changes = self._sync_changes_with_retry(
                     account_id=provider_account_id,
                     checkpoint_cursor=checkpoint_cursor,
                     page_cursor=page_cursor,
@@ -228,6 +231,34 @@ class InboxSyncService:
             "pages_synced": pages_synced,
         }
 
+
+    def _sync_changes_with_retry(
+        self,
+        *,
+        account_id: str,
+        checkpoint_cursor: str | None,
+        page_cursor: str | None,
+        max_results: int,
+    ):
+        """Fetch one incremental change page with a bounded retry limit."""
+
+        last_error = None
+
+        for attempt in range(1, MAX_SYNC_ATTEMPTS + 1):
+            try:
+                return self.provider.sync_changes(
+                    account_id=account_id,
+                    checkpoint_cursor=checkpoint_cursor,
+                    page_cursor=page_cursor,
+                    max_results=max_results,
+                )
+            except Exception as exc:
+                last_error = exc
+
+                if attempt == MAX_SYNC_ATTEMPTS:
+                    raise
+
+        raise RuntimeError("Incremental sync retry loop exited unexpectedly.") from last_error
 
     def persist_message(
         self,

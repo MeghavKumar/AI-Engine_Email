@@ -1,5 +1,7 @@
 from unittest.mock import Mock
 
+import pytest
+
 from app.db.repositories.email_account import EmailAccountRepository
 from app.db.repositories.email_recipient import EmailRecipientRepository
 from app.providers.email.normalization import NormalizedEmailProvider
@@ -8,7 +10,7 @@ from app.providers.email.sync import (
     PaginatedEmailSyncProvider,
 )
 from app.schemas.provider import EmailAddress, EmailAttachment, EmailMessage
-from app.schemas.sync import SyncPage
+from app.schemas.sync import SyncChanges, SyncPage
 from app.services.inbox_sync import InboxSyncService
 
 
@@ -1269,3 +1271,101 @@ def test_sync_incremental_marks_checkpoint_error_and_preserves_cursor_on_failure
     )
 
     checkpoint_repository.mark_success.assert_not_called()
+
+
+def test_sync_incremental_retries_provider_failure_and_succeeds_on_third_attempt():
+    provider = IncrementalSyncProvider()
+    provider.sync_changes = Mock(
+        side_effect=[
+            RuntimeError("temporary failure 1"),
+            RuntimeError("temporary failure 2"),
+            SyncChanges(
+                changes=[],
+                checkpoint_cursor="checkpoint-2",
+                has_more=False,
+            ),
+        ]
+    )
+
+    account = Mock()
+    account.id = 1
+    account.provider = "gmail"
+    account.is_active = True
+
+    account_repository = Mock()
+    account_repository.get_by_id.return_value = account
+
+    checkpoint = Mock()
+    checkpoint.sync_cursor = "checkpoint-1"
+
+    checkpoint_repository = Mock()
+    checkpoint_repository.get_or_create.return_value = checkpoint
+
+    service = InboxSyncService(
+        provider=provider,
+        normalized_provider=Mock(),
+        account_repository=account_repository,
+        thread_repository=Mock(),
+        message_repository=Mock(),
+        recipient_repository=Mock(),
+        attachment_repository=Mock(),
+        checkpoint_repository=checkpoint_repository,
+    )
+
+    result = service.sync_incremental(
+        account_id=1,
+        provider_account_id="provider-account-1",
+    )
+
+    assert result["pages_synced"] == 1
+    assert provider.sync_changes.call_count == 3
+    checkpoint_repository.mark_success.assert_called_once_with(
+        checkpoint,
+        sync_cursor="checkpoint-2",
+    )
+    checkpoint_repository.mark_error.assert_not_called()
+
+
+def test_sync_incremental_stops_after_three_provider_failures():
+    provider = IncrementalSyncProvider()
+    provider.sync_changes = Mock(
+        side_effect=RuntimeError("provider unavailable")
+    )
+
+    account = Mock()
+    account.id = 1
+    account.provider = "gmail"
+    account.is_active = True
+
+    account_repository = Mock()
+    account_repository.get_by_id.return_value = account
+
+    checkpoint = Mock()
+    checkpoint.sync_cursor = "checkpoint-1"
+
+    checkpoint_repository = Mock()
+    checkpoint_repository.get_or_create.return_value = checkpoint
+
+    service = InboxSyncService(
+        provider=provider,
+        normalized_provider=Mock(),
+        account_repository=account_repository,
+        thread_repository=Mock(),
+        message_repository=Mock(),
+        recipient_repository=Mock(),
+        attachment_repository=Mock(),
+        checkpoint_repository=checkpoint_repository,
+    )
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        service.sync_incremental(
+            account_id=1,
+            provider_account_id="provider-account-1",
+        )
+
+    assert provider.sync_changes.call_count == 3
+    checkpoint_repository.mark_success.assert_not_called()
+    checkpoint_repository.mark_error.assert_called_once_with(
+        checkpoint,
+        error_message="provider unavailable",
+    )
