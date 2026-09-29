@@ -25,7 +25,10 @@ class EmailTriageService:
                 ),
             )
 
-        if classification.category == EmailCategory.ACTION_REQUIRED:
+        if (
+            classification.category == EmailCategory.ACTION_REQUIRED
+            or classification.requires_action
+        ):
             return TriageDecision(
                 action=TriageAction.REVIEW,
                 reason="Email requires user action.",

@@ -64,3 +64,17 @@ def test_informational_email_requires_no_action():
     )
 
     assert result.action == TriageAction.NO_ACTION
+
+
+def test_requires_action_overrides_informational_category():
+    service = EmailTriageService()
+
+    result = service.decide(
+        make_classification(
+            EmailCategory.INFORMATIONAL,
+            priority=EmailPriority.HIGH,
+            requires_action=True,
+        )
+    )
+
+    assert result.action == TriageAction.REVIEW
