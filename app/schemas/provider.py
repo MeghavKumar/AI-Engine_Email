@@ -8,6 +8,14 @@ class EmailAddress(BaseModel):
     email: EmailStr
 
 
+class EmailAttachment(BaseModel):
+    provider_attachment_id: str
+    filename: str = ""
+    content_type: str | None = None
+    size_bytes: int | None = None
+    is_inline: bool = False
+
+
 class EmailMessage(BaseModel):
     provider: str
     account_id: str
@@ -26,5 +34,6 @@ class EmailMessage(BaseModel):
 
     is_read: bool = False
     has_attachments: bool = False
+    attachments: list[EmailAttachment] = Field(default_factory=list)
 
     labels: list[str] = Field(default_factory=list)

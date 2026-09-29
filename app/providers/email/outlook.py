@@ -4,10 +4,15 @@ from pathlib import Path
 import httpx
 
 from app.providers.email.base import EmailProvider
-from app.schemas.provider import EmailMessage
+from app.providers.email.sync import IncrementalEmailSyncProvider
+from app.schemas.provider import (
+    EmailAttachment,
+    EmailMessage,
+)
+from app.schemas.sync import SyncChanges, SyncPage
 
 
-class OutlookProvider(EmailProvider):
+class OutlookProvider(EmailProvider, IncrementalEmailSyncProvider):
     """
     Microsoft Graph implementation of EmailProvider.
 
@@ -54,6 +59,100 @@ class OutlookProvider(EmailProvider):
 
         data = response.json()
         return data.get("value", [])
+
+    def sync_page(
+        self,
+        account_id: str,
+        cursor: str | None = None,
+        max_results: int = 25,
+    ) -> SyncPage:
+        """Return one paginated inbox page from Outlook."""
+
+        if cursor is None:
+            response = self.client.get(
+                f"/users/{account_id}/mailFolders/inbox/messages",
+                headers=self._headers(),
+                params={
+                    "$top": max_results,
+                    "$orderby": "receivedDateTime DESC",
+                },
+            )
+        else:
+            response = self.client.get(
+                cursor,
+                headers=self._headers(),
+            )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        return SyncPage(
+            messages=data.get("value", []),
+            next_cursor=data.get("@odata.nextLink"),
+        )
+
+    def sync_changes(
+        self,
+        account_id: str,
+        checkpoint_cursor: str | None = None,
+        page_cursor: str | None = None,
+        max_results: int = 25,
+    ) -> SyncChanges:
+        """Return one page of Outlook Graph delta changes."""
+
+        if page_cursor is not None:
+            response = self.client.get(
+                page_cursor,
+                headers=self._headers(),
+            )
+        elif checkpoint_cursor is not None:
+            response = self.client.get(
+                checkpoint_cursor,
+                headers=self._headers(),
+            )
+        else:
+            response = self.client.get(
+                f"/users/{account_id}/mailFolders/inbox/messages/delta",
+                headers=self._headers(),
+                params={
+                    "$top": max_results,
+                },
+            )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        changes = []
+
+        for item in data.get("value", []):
+            message_id = item.get("id")
+            if not message_id:
+                continue
+
+            if "@removed" in item:
+                changes.append(
+                    {
+                        "change_type": "delete",
+                        "message_id": message_id,
+                    }
+                )
+            else:
+                changes.append(
+                    {
+                        "change_type": "upsert",
+                        "message_id": message_id,
+                        "message": item,
+                    }
+                )
+
+        return SyncChanges(
+            changes=changes,
+            next_cursor=data.get("@odata.nextLink"),
+            checkpoint_cursor=data.get("@odata.deltaLink"),
+            has_more=bool(data.get("@odata.nextLink")),
+        )
 
     def get_message(
         self,
@@ -241,6 +340,30 @@ class OutlookProvider(EmailProvider):
 
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
+    @staticmethod
+    def _extract_attachments(
+        raw_message: dict,
+    ) -> list[EmailAttachment]:
+        attachments: list[EmailAttachment] = []
+
+        for attachment in raw_message.get("attachments", []):
+            provider_attachment_id = attachment.get("id")
+
+            if not provider_attachment_id:
+                continue
+
+            attachments.append(
+                EmailAttachment(
+                    provider_attachment_id=provider_attachment_id,
+                    filename=attachment.get("name") or "",
+                    content_type=attachment.get("contentType"),
+                    size_bytes=attachment.get("size"),
+                    is_inline=bool(attachment.get("isInline", False)),
+                )
+            )
+
+        return attachments
+
     def normalize_message(
         self,
         account_id: str,
@@ -253,6 +376,7 @@ class OutlookProvider(EmailProvider):
         cc = self._parse_addresses(
             raw_message.get("ccRecipients")
         )
+        attachments = self._extract_attachments(raw_message)
 
         return EmailMessage(
             provider="outlook",
@@ -270,6 +394,8 @@ class OutlookProvider(EmailProvider):
             is_read=bool(raw_message.get("isRead", False)),
             has_attachments=bool(
                 raw_message.get("hasAttachments", False)
+                or attachments
             ),
+            attachments=attachments,
             labels=[],
         )

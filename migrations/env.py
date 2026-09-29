@@ -5,7 +5,15 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.db.base import Base
-from app.models import EmailAccount, EmailWorkflow
+from app.models import (
+    EmailAccount,
+    EmailAttachment,
+    EmailMessageRecord,
+    EmailRecipient,
+    EmailSyncCheckpoint,
+    EmailThread,
+    EmailWorkflow,
+)
 
 config = context.config
 

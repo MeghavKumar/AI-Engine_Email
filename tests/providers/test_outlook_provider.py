@@ -372,3 +372,303 @@ def test_outlook_archive_message():
     )
 
     assert result is None
+
+
+def test_outlook_sync_page_initial_page():
+    def handler(request):
+        assert request.url.path == (
+            "/v1.0/users/test@example.com/mailFolders/inbox/messages"
+        )
+        assert request.url.params["$top"] == "5"
+        assert request.url.params["$orderby"] == "receivedDateTime DESC"
+
+        return httpx.Response(
+            200,
+            json={
+                "value": [
+                    {
+                        "id": "message-1",
+                        "conversationId": "conversation-1",
+                    }
+                ],
+                "@odata.nextLink": (
+                    "https://graph.microsoft.com/v1.0/"
+                    "users/test@example.com/mailFolders/inbox/messages"
+                    "?$skiptoken=page-2"
+                ),
+            },
+        )
+
+    provider = OutlookProvider(
+        access_token="test-token",
+        client=make_client(handler),
+    )
+
+    page = provider.sync_page(
+        account_id="test@example.com",
+        max_results=5,
+    )
+
+    assert page.messages == [
+        {
+            "id": "message-1",
+            "conversationId": "conversation-1",
+        }
+    ]
+    assert page.next_cursor == (
+        "https://graph.microsoft.com/v1.0/"
+        "users/test@example.com/mailFolders/inbox/messages"
+        "?$skiptoken=page-2"
+    )
+
+
+def test_outlook_sync_page_uses_next_link():
+    next_link = (
+        "https://graph.microsoft.com/v1.0/"
+        "users/test@example.com/mailFolders/inbox/messages"
+        "?$skiptoken=page-2"
+    )
+
+    def handler(request):
+        assert request.url.path == (
+            "/v1.0/users/test@example.com/mailFolders/inbox/messages"
+        )
+        assert request.url.params["$skiptoken"] == "page-2"
+        assert request.headers["Authorization"] == "Bearer test-token"
+
+        return httpx.Response(
+            200,
+            json={
+                "value": [
+                    {
+                        "id": "message-2",
+                        "conversationId": "conversation-1",
+                    }
+                ]
+            },
+        )
+
+    provider = OutlookProvider(
+        access_token="test-token",
+        client=make_client(handler),
+    )
+
+    page = provider.sync_page(
+        account_id="test@example.com",
+        cursor=next_link,
+        max_results=5,
+    )
+
+    assert page.messages == [
+        {
+            "id": "message-2",
+            "conversationId": "conversation-1",
+        }
+    ]
+    assert page.next_cursor is None
+
+
+def test_outlook_message_normalization_extracts_attachment_metadata():
+    provider = OutlookProvider.__new__(OutlookProvider)
+
+    raw_message = {
+        "id": "message-attachment-1",
+        "conversationId": "conversation-attachment-1",
+        "from": {
+            "emailAddress": {
+                "name": "Sender",
+                "address": "sender@example.com",
+            }
+        },
+        "toRecipients": [
+            {
+                "emailAddress": {
+                    "name": "Recipient",
+                    "address": "recipient@example.com",
+                }
+            }
+        ],
+        "subject": "Document",
+        "body": {
+            "content": "Please see the attached document.",
+        },
+        "receivedDateTime": "2026-09-26T12:00:00Z",
+        "isRead": False,
+        "hasAttachments": True,
+        "attachments": [
+            {
+                "id": "attachment-1",
+                "name": "report.pdf",
+                "contentType": "application/pdf",
+                "size": 12345,
+                "isInline": False,
+            }
+        ],
+    }
+
+    message = provider.normalize_message(
+        account_id="test@example.com",
+        raw_message=raw_message,
+    )
+
+    assert message.has_attachments is True
+    assert len(message.attachments) == 1
+
+    attachment = message.attachments[0]
+
+    assert attachment.provider_attachment_id == "attachment-1"
+    assert attachment.filename == "report.pdf"
+    assert attachment.content_type == "application/pdf"
+    assert attachment.size_bytes == 12345
+    assert attachment.is_inline is False
+
+
+def test_outlook_sync_changes_initial_delta_page():
+    def handler(request):
+        assert request.url.path == "/v1.0/users/test@example.com/mailFolders/inbox/messages/delta"
+        assert request.url.params["$top"] == "5"
+        assert request.headers["Authorization"] == "Bearer test-token"
+
+        return httpx.Response(
+            200,
+            json={
+                "value": [{"id": "message-1", "conversationId": "conversation-1"}],
+                "@odata.nextLink": "https://graph.microsoft.com/v1.0/users/test@example.com/mailFolders/inbox/messages/delta?$skiptoken=delta-page-2",
+                "@odata.deltaLink": "https://graph.microsoft.com/v1.0/users/test@example.com/mailFolders/inbox/messages/delta?$deltatoken=delta-100",
+            },
+        )
+
+    provider = OutlookProvider(
+        access_token="test-token",
+        client=make_client(handler),
+    )
+
+    changes = provider.sync_changes(
+        account_id="test@example.com",
+        max_results=5,
+    )
+
+    assert len(changes.changes) == 1
+    assert changes.changes[0].change_type == "upsert"
+    assert changes.changes[0].message_id == "message-1"
+    assert changes.changes[0].message == {
+        "id": "message-1",
+        "conversationId": "conversation-1",
+    }
+    assert changes.next_cursor == "https://graph.microsoft.com/v1.0/users/test@example.com/mailFolders/inbox/messages/delta?$skiptoken=delta-page-2"
+    assert changes.checkpoint_cursor == "https://graph.microsoft.com/v1.0/users/test@example.com/mailFolders/inbox/messages/delta?$deltatoken=delta-100"
+    assert changes.has_more is True
+
+
+def test_outlook_sync_changes_uses_next_link_for_continuation():
+    next_link = "https://graph.microsoft.com/v1.0/users/test@example.com/mailFolders/inbox/messages/delta?$skiptoken=delta-page-2"
+
+    def handler(request):
+        assert request.url.path == (
+            "/v1.0/users/test@example.com/mailFolders/inbox/messages/delta"
+        )
+        assert request.url.params["$skiptoken"] == "delta-page-2"
+        assert request.headers["Authorization"] == "Bearer test-token"
+
+        return httpx.Response(
+            200,
+            json={
+                "value": [
+                    {
+                        "id": "message-2",
+                        "conversationId": "conversation-1",
+                    }
+                ],
+                "@odata.deltaLink": "https://graph.microsoft.com/v1.0/users/test@example.com/mailFolders/inbox/messages/delta?$deltatoken=delta-100",
+            },
+        )
+
+    provider = OutlookProvider(
+        access_token="test-token",
+        client=make_client(handler),
+    )
+
+    changes = provider.sync_changes(
+        account_id="test@example.com",
+        page_cursor=next_link,
+        max_results=5,
+    )
+
+    assert len(changes.changes) == 1
+    assert changes.changes[0].change_type == "upsert"
+    assert changes.changes[0].message_id == "message-2"
+    assert changes.changes[0].message == {
+        "id": "message-2",
+        "conversationId": "conversation-1",
+    }
+    assert changes.next_cursor is None
+    assert changes.checkpoint_cursor == "https://graph.microsoft.com/v1.0/users/test@example.com/mailFolders/inbox/messages/delta?$deltatoken=delta-100"
+    assert changes.has_more is False
+
+
+def test_outlook_sync_changes_intermediate_page_does_not_advance_checkpoint():
+    next_link = "https://graph.microsoft.com/v1.0/users/test@example.com/mailFolders/inbox/messages/delta?$skiptoken=delta-page-2"
+
+    def handler(request):
+        assert request.url.params["$skiptoken"] == "delta-page-2"
+
+        return httpx.Response(
+            200,
+            json={
+                "value": [
+                    {
+                        "id": "message-2",
+                        "conversationId": "conversation-1",
+                    }
+                ],
+                "@odata.nextLink": next_link + "-3",
+            },
+        )
+
+    provider = OutlookProvider(
+        access_token="test-token",
+        client=make_client(handler),
+    )
+
+    changes = provider.sync_changes(
+        account_id="test@example.com",
+        page_cursor=next_link,
+        max_results=5,
+    )
+
+    assert changes.next_cursor == next_link + "-3"
+    assert changes.checkpoint_cursor is None
+    assert changes.has_more is True
+
+
+def test_outlook_sync_changes_maps_removed_message_to_delete():
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "value": [
+                    {
+                        "id": "message-deleted",
+                        "@removed": {
+                            "reason": "deleted",
+                        },
+                    }
+                ],
+                "@odata.deltaLink": "https://graph.microsoft.com/v1.0/users/test@example.com/mailFolders/inbox/messages/delta?$deltatoken=delta-101",
+            },
+        )
+
+    provider = OutlookProvider(
+        access_token="test-token",
+        client=make_client(handler),
+    )
+
+    changes = provider.sync_changes(
+        account_id="test@example.com",
+        max_results=5,
+    )
+
+    assert len(changes.changes) == 1
+    assert changes.changes[0].change_type == "delete"
+    assert changes.changes[0].message_id == "message-deleted"
+    assert changes.changes[0].message is None
