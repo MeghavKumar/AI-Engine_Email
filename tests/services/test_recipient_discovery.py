@@ -1,4 +1,5 @@
 from app.schemas.recipient import RecipientCandidate
+from app.schemas.research import ResearchContact, ResearchSourceType
 from app.services.recipient_discovery import RecipientDiscoveryService
 
 
@@ -131,3 +132,70 @@ def test_discover_historical_candidate_requires_mailbox_research_service():
             account_id=42,
             email="john@example.com",
         )
+
+
+def test_discover_researched_candidate_requires_email():
+    service = RecipientDiscoveryService()
+
+    contact = ResearchContact(
+        name="Jane Doe",
+        role="Engineering Manager",
+        organization="Example Corp",
+        source_type=ResearchSourceType.COMPANY_WEBSITE,
+        source_reference="company:example",
+        reason="Public company profile identifies the person.",
+        confidence=0.95,
+    )
+
+    result = service.discover_researched_candidate(contact)
+
+    assert result.candidates == []
+    assert result.requires_human_verification is True
+
+
+def test_discover_researched_candidate_from_public_research():
+    service = RecipientDiscoveryService()
+
+    contact = ResearchContact(
+        name="Jane Doe",
+        role="Engineering Manager",
+        organization="Example Corp",
+        email="jane.doe@example.com",
+        source_type=ResearchSourceType.COMPANY_WEBSITE,
+        source_reference="company:example",
+        reason="Public company profile lists this email address.",
+        confidence=0.95,
+    )
+
+    result = service.discover_researched_candidate(contact)
+
+    assert len(result.candidates) == 1
+    candidate = result.candidates[0]
+    assert candidate.email == "jane.doe@example.com"
+    assert candidate.source == "company_website"
+    assert candidate.confidence == 0.95
+    assert result.requires_human_verification is True
+    assert "human verification is required" in candidate.reason
+
+
+def test_discover_researched_candidate_marks_inferred_email():
+    service = RecipientDiscoveryService()
+
+    contact = ResearchContact(
+        name="Jane Doe",
+        organization="Example Corp",
+        email="jane.doe@example.com",
+        email_is_inferred=True,
+        source_type=ResearchSourceType.INFERENCE,
+        source_reference="inference:example",
+        reason="Email address inferred from an observed company convention.",
+        confidence=0.6,
+    )
+
+    result = service.discover_researched_candidate(contact)
+
+    assert len(result.candidates) == 1
+    candidate = result.candidates[0]
+    assert candidate.email == "jane.doe@example.com"
+    assert candidate.source == "inference"
+    assert result.requires_human_verification is True

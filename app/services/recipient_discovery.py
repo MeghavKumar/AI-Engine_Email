@@ -2,6 +2,7 @@ from app.schemas.recipient import (
     RecipientCandidate,
     RecipientDiscoveryResult,
 )
+from app.schemas.research import ResearchContact
 from app.services.mailbox_research import MailboxResearchService
 
 
@@ -22,6 +23,40 @@ class RecipientDiscoveryService:
 
         return RecipientDiscoveryResult(
             candidates=candidates or [],
+            requires_human_verification=True,
+        )
+
+    def discover_researched_candidate(
+        self,
+        contact: ResearchContact,
+    ) -> RecipientDiscoveryResult:
+        """Convert researched contact evidence into a candidate."""
+
+        if contact.email is None:
+            return RecipientDiscoveryResult(
+                candidates=[],
+                requires_human_verification=True,
+            )
+
+        source = contact.source_type.value.lower()
+
+        if contact.email_is_inferred:
+            source = "inference"
+
+        candidate = RecipientCandidate(
+            name=contact.name,
+            email=contact.email,
+            source=source,
+            confidence=contact.confidence,
+            reason=(
+                f"{contact.reason} "
+                "Research evidence does not constitute recipient "
+                "authorization; human verification is required."
+            ),
+        )
+
+        return RecipientDiscoveryResult(
+            candidates=[candidate],
             requires_human_verification=True,
         )
 
