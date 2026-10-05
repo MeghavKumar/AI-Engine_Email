@@ -212,3 +212,117 @@ def test_research_agent_requires_web_service_for_web_query():
             recipient_email="person@example.com",
             web_query="person example company",
         )
+
+
+def test_research_agent_researches_new_recipient_without_inventing_email():
+    class FakeMailboxResearch:
+        def find_historical_evidence(
+            self,
+            *,
+            account_id,
+            recipient_email,
+            limit,
+        ):
+            raise AssertionError("Mailbox research should not be used")
+
+    class FakeWebResearch:
+        def search(self, query, *, source_type):
+            assert query == "Jane Doe Engineering Manager Example Corp"
+            return [
+                ResearchEvidence(
+                    source_type=source_type,
+                    source_reference="web:example-team",
+                    evidence="Jane Doe is an Engineering Manager at Example Corp.",
+                )
+            ]
+
+    class FakeAIProvider:
+        def generate(self, prompt, context):
+            assert "Do not invent email addresses." in prompt
+            assert "Do not infer an email address from a naming convention." in prompt
+            assert "Jane Doe is an Engineering Manager" in prompt
+            assert context["research_type"] == "new_recipient"
+            return '{"assessment":"Public evidence identifies the person and role.","confidence":0.95}'
+
+    agent = ResearchAgent(
+        mailbox_research=FakeMailboxResearch(),
+        ai_provider=FakeAIProvider(),
+        web_research=FakeWebResearch(),
+    )
+
+    result = agent.research_new_recipient(
+        name="Jane Doe",
+        role="Engineering Manager",
+        organization="Example Corp",
+    )
+
+    assert len(result.evidence) == 1
+    assert result.evidence[0].source_type == ResearchSourceType.WEB
+    assert result.assessment is not None
+    assert result.assessment.confidence == 0.95
+
+
+def test_research_agent_requires_web_service_for_new_recipient():
+    class FakeMailboxResearch:
+        def find_historical_evidence(
+            self,
+            *,
+            account_id,
+            recipient_email,
+            limit,
+        ):
+            raise AssertionError("Mailbox research should not be used")
+
+    class FakeAIProvider:
+        def generate(self, prompt, context):
+            raise AssertionError("AI provider should not be called")
+
+    agent = ResearchAgent(
+        mailbox_research=FakeMailboxResearch(),
+        ai_provider=FakeAIProvider(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="WebResearchService is required for new recipient research",
+    ):
+        agent.research_new_recipient(
+            name="Jane Doe",
+            organization="Example Corp",
+        )
+
+
+def test_research_agent_new_recipient_allows_custom_web_query():
+    class FakeMailboxResearch:
+        def find_historical_evidence(
+            self,
+            *,
+            account_id,
+            recipient_email,
+            limit,
+        ):
+            raise AssertionError("Mailbox research should not be used")
+
+    class FakeWebResearch:
+        def search(self, query, *, source_type):
+            assert query == "Jane Doe Example Corp official profile"
+            return []
+
+    class FakeAIProvider:
+        def generate(self, prompt, context):
+            raise AssertionError("AI provider should not be called")
+
+    agent = ResearchAgent(
+        mailbox_research=FakeMailboxResearch(),
+        ai_provider=FakeAIProvider(),
+        web_research=FakeWebResearch(),
+    )
+
+    result = agent.research_new_recipient(
+        name="Jane Doe",
+        organization="Example Corp",
+        web_query="Jane Doe Example Corp official profile",
+    )
+
+    assert result.evidence == []
+    assert result.assessment is None

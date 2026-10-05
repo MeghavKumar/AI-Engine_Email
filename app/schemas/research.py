@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class ResearchSourceType(str, Enum):
@@ -33,3 +33,17 @@ class ResearchResult(BaseModel):
 
     evidence: list[ResearchEvidence] = Field(default_factory=list)
     assessment: ResearchAssessment | None = None
+
+
+class ResearchContact(BaseModel):
+    """A person identified during recipient research."""
+
+    name: str | None = None
+    role: str | None = None
+    organization: str | None = None
+    email: EmailStr | None = None
+    email_is_inferred: bool = False
+    source_type: ResearchSourceType
+    source_reference: str
+    reason: str
+    confidence: float = Field(ge=0.0, le=1.0)
