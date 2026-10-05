@@ -149,3 +149,66 @@ def test_mark_deleted_and_restore():
         finally:
             session.delete(message)
             session.commit()
+
+
+
+def test_find_by_recipient_email_returns_matching_non_deleted_messages():
+    from app.models.email_account import EmailAccount
+    from app.models.email_recipient import EmailRecipient
+
+    with SessionLocal() as session:
+        repository = EmailMessageRepository(session)
+
+        account = EmailAccount(
+            user_id="recipient-search-user",
+            provider="gmail",
+            email_address="recipient-search@example.com",
+            provider_account_id="recipient-search-account",
+        )
+        session.add(account)
+        session.flush()
+
+        message = repository.create(
+            account_id=account.id,
+            provider="gmail",
+            provider_message_id="recipient-search-message-1",
+            sender_name="Alice",
+            sender_email="alice@example.com",
+            subject="Historical email",
+            body_text="Hello",
+            received_at=datetime.now(timezone.utc),
+            is_read=False,
+            has_attachments=False,
+        )
+
+        recipient = EmailRecipient(
+            message_id=message.id,
+            recipient_type="to",
+            name="John Doe",
+            email="John@Example.com",
+        )
+        session.add(recipient)
+        session.commit()
+
+        found = repository.find_by_recipient_email(
+            account_id=account.id,
+            email="john@example.com",
+        )
+
+        assert len(found) == 1
+        assert found[0].id == message.id
+
+        repository.mark_deleted(message)
+        session.commit()
+
+        found_after_delete = repository.find_by_recipient_email(
+            account_id=account.id,
+            email="john@example.com",
+        )
+        assert found_after_delete == []
+
+        session.delete(recipient)
+        session.delete(message)
+        session.flush()
+        session.delete(account)
+        session.commit()

@@ -1,4 +1,7 @@
 from app.models.email_message import EmailMessageRecord
+from sqlalchemy import func
+
+from app.models.email_recipient import EmailRecipient
 
 
 class EmailMessageRepository:
@@ -22,6 +25,30 @@ class EmailMessageRepository:
                 == provider_message_id,
             )
             .first()
+        )
+
+    def find_by_recipient_email(
+        self,
+        *,
+        account_id: int,
+        email: str,
+        limit: int = 20,
+    ) -> list[EmailMessageRecord]:
+        """Find non-deleted messages sent to a recipient email."""
+
+        normalized_email = email.strip().lower()
+
+        return (
+            self.session.query(EmailMessageRecord)
+            .join(EmailRecipient)
+            .filter(
+                EmailMessageRecord.account_id == account_id,
+                EmailMessageRecord.is_deleted.is_(False),
+                func.lower(EmailRecipient.email) == normalized_email,
+            )
+            .order_by(EmailMessageRecord.received_at.desc())
+            .limit(limit)
+            .all()
         )
 
     def create(
