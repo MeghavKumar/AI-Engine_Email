@@ -48,3 +48,86 @@ def test_discovery_always_requires_human_verification():
     )
 
     assert result.requires_human_verification is True
+
+
+def test_discover_historical_candidate_creates_candidate_from_evidence():
+    from unittest.mock import Mock
+
+    from app.schemas.research import ResearchEvidence, ResearchSourceType
+
+    mailbox_research = Mock()
+    mailbox_research.find_historical_evidence.return_value = [
+        ResearchEvidence(
+            source_type=ResearchSourceType.MAILBOX,
+            source_reference="message:123",
+            evidence="Historical communication with john@example.com.",
+        ),
+        ResearchEvidence(
+            source_type=ResearchSourceType.MAILBOX,
+            source_reference="message:456",
+            evidence="Another historical communication.",
+        ),
+    ]
+
+    service = RecipientDiscoveryService(
+        mailbox_research=mailbox_research,
+    )
+
+    result = service.discover_historical_candidate(
+        account_id=42,
+        email="john@example.com",
+        name="John Doe",
+        limit=10,
+    )
+
+    assert len(result.candidates) == 1
+
+    candidate = result.candidates[0]
+
+    assert candidate.name == "John Doe"
+    assert candidate.email == "john@example.com"
+    assert candidate.source == "historical_mailbox"
+    assert candidate.confidence == 1.0
+    assert "2 message(s)" in candidate.reason
+    assert "does not constitute recipient authorization" in candidate.reason
+    assert result.requires_human_verification is True
+
+    mailbox_research.find_historical_evidence.assert_called_once_with(
+        account_id=42,
+        recipient_email="john@example.com",
+        limit=10,
+    )
+
+
+def test_discover_historical_candidate_returns_empty_when_no_evidence():
+    from unittest.mock import Mock
+
+    mailbox_research = Mock()
+    mailbox_research.find_historical_evidence.return_value = []
+
+    service = RecipientDiscoveryService(
+        mailbox_research=mailbox_research,
+    )
+
+    result = service.discover_historical_candidate(
+        account_id=42,
+        email="john@example.com",
+    )
+
+    assert result.candidates == []
+    assert result.requires_human_verification is True
+
+
+def test_discover_historical_candidate_requires_mailbox_research_service():
+    service = RecipientDiscoveryService()
+
+    import pytest
+
+    with pytest.raises(
+        ValueError,
+        match="MailboxResearchService is required",
+    ):
+        service.discover_historical_candidate(
+            account_id=42,
+            email="john@example.com",
+        )
