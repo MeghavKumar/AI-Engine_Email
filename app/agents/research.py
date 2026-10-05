@@ -4,8 +4,10 @@ from app.providers.ai.base import AIProvider
 from app.schemas.research import (
     ResearchAssessment,
     ResearchResult,
+    ResearchSourceType,
 )
 from app.services.mailbox_research import MailboxResearchService
+from app.services.web_research import WebResearchService
 
 
 class ResearchAgent:
@@ -15,9 +17,11 @@ class ResearchAgent:
         self,
         mailbox_research: MailboxResearchService,
         ai_provider: AIProvider,
+        web_research: WebResearchService | None = None,
     ):
         self.mailbox_research = mailbox_research
         self.ai_provider = ai_provider
+        self.web_research = web_research
 
     def research(
         self,
@@ -25,14 +29,29 @@ class ResearchAgent:
         account_id: int,
         recipient_email: str,
         limit: int = 20,
+        web_query: str | None = None,
+        web_source_type: ResearchSourceType = ResearchSourceType.WEB,
     ) -> ResearchResult:
-        """Gather mailbox evidence and assess it with an AI provider."""
+        """Gather controlled evidence and assess it with an AI provider."""
 
         evidence = self.mailbox_research.find_historical_evidence(
             account_id=account_id,
             recipient_email=recipient_email,
             limit=limit,
         )
+
+        if web_query is not None:
+            if self.web_research is None:
+                raise ValueError(
+                    "WebResearchService is required for web research."
+                )
+
+            evidence.extend(
+                self.web_research.search(
+                    web_query,
+                    source_type=web_source_type,
+                )
+            )
 
         if not evidence:
             return ResearchResult(evidence=[])
@@ -67,7 +86,7 @@ class ResearchAgent:
         return f"""
 You are an email research assessment system.
 
-Assess the supplied historical mailbox evidence.
+Assess the supplied research evidence.
 
 Important rules:
 - Use ONLY the supplied evidence.
@@ -86,7 +105,7 @@ Return exactly this structure:
   "confidence": 0.95
 }}
 
-Historical evidence:
+Research evidence:
 {json.dumps(evidence, indent=2, default=str)}
 """.strip()
 

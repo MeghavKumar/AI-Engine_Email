@@ -140,3 +140,75 @@ def test_research_prompt_contains_evidence_but_not_raw_uncontrolled_content():
     assert "Do not invent facts." in prompt
     assert "Do not invent email addresses." in prompt
     assert "Do not treat historical usage as authorization." in prompt
+
+
+def test_research_agent_includes_web_evidence():
+    class FakeMailboxResearch:
+        def find_historical_evidence(
+            self,
+            *,
+            account_id,
+            recipient_email,
+            limit,
+        ):
+            return []
+
+    class FakeWebResearch:
+        def search(self, query, *, source_type):
+            return [
+                ResearchEvidence(
+                    source_type=source_type,
+                    source_reference="web:example",
+                    evidence="Public evidence about the recipient.",
+                )
+            ]
+
+    class FakeAIProvider:
+        def generate(self, prompt, context):
+            assert "Public evidence about the recipient." in prompt
+            return '{"assessment":"Evidence supports the candidate.","confidence":0.9}'
+
+    agent = ResearchAgent(
+        mailbox_research=FakeMailboxResearch(),
+        ai_provider=FakeAIProvider(),
+        web_research=FakeWebResearch(),
+    )
+
+    result = agent.research(
+        account_id=1,
+        recipient_email="person@example.com",
+        web_query="person example company",
+    )
+
+    assert len(result.evidence) == 1
+    assert result.evidence[0].source_type == ResearchSourceType.WEB
+    assert result.assessment is not None
+    assert result.assessment.confidence == 0.9
+
+
+def test_research_agent_requires_web_service_for_web_query():
+    class FakeMailboxResearch:
+        def find_historical_evidence(
+            self,
+            *,
+            account_id,
+            recipient_email,
+            limit,
+        ):
+            return []
+
+    class FakeAIProvider:
+        def generate(self, prompt, context):
+            raise AssertionError("AI provider should not be called")
+
+    agent = ResearchAgent(
+        mailbox_research=FakeMailboxResearch(),
+        ai_provider=FakeAIProvider(),
+    )
+
+    with pytest.raises(ValueError, match="WebResearchService is required"):
+        agent.research(
+            account_id=1,
+            recipient_email="person@example.com",
+            web_query="person example company",
+        )
