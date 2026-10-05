@@ -5,6 +5,7 @@ from app.models.email_recipient import EmailRecipient
 from app.models.email_sync_checkpoint import EmailSyncCheckpoint
 from app.models.email_thread import EmailThread
 from app.models.email_workflow import EmailWorkflow
+from app.models.research_run import ResearchRun
 
 __all__ = [
     "EmailAccount",
@@ -14,4 +15,5 @@ __all__ = [
     "EmailSyncCheckpoint",
     "EmailThread",
     "EmailWorkflow",
+    "ResearchRun",
 ]
