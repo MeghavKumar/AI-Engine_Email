@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from app.agents.research import ResearchAgent
 from app.schemas.research import ResearchResult
+from app.services.research_audit import ResearchAuditService
 from app.services.research_run import ResearchRunService
 
 
@@ -12,9 +13,11 @@ class ResearchExecutionService:
         self,
         research_agent: ResearchAgent,
         research_run_service: ResearchRunService,
+        research_audit_service: ResearchAuditService | None = None,
     ):
         self.research_agent = research_agent
         self.research_run_service = research_run_service
+        self.research_audit_service = research_audit_service
 
     def research(
         self,
@@ -36,6 +39,12 @@ class ResearchExecutionService:
 
         self.research_run_service.mark_started(research_run)
 
+        if self.research_audit_service is not None:
+            self.research_audit_service.create(
+                research_run_id=research_run.id,
+                event_type="research_started",
+            )
+
         try:
             result = self.research_agent.research(
                 account_id=account_id,
@@ -48,9 +57,22 @@ class ResearchExecutionService:
                 research_run,
                 str(exc),
             )
+
+            if self.research_audit_service is not None:
+                self.research_audit_service.create(
+                    research_run_id=research_run.id,
+                    event_type="research_failed",
+                )
+
             raise
 
         self.research_run_service.mark_success(research_run)
+
+        if self.research_audit_service is not None:
+            self.research_audit_service.create(
+                research_run_id=research_run.id,
+                event_type="research_completed",
+            )
 
         return result
 
@@ -75,6 +97,12 @@ class ResearchExecutionService:
 
         self.research_run_service.mark_started(research_run)
 
+        if self.research_audit_service is not None:
+            self.research_audit_service.create(
+                research_run_id=research_run.id,
+                event_type="research_started",
+            )
+
         try:
             result = self.research_agent.research_new_recipient(
                 name=name,
@@ -87,8 +115,21 @@ class ResearchExecutionService:
                 research_run,
                 str(exc),
             )
+
+            if self.research_audit_service is not None:
+                self.research_audit_service.create(
+                    research_run_id=research_run.id,
+                    event_type="research_failed",
+                )
+
             raise
 
         self.research_run_service.mark_success(research_run)
+
+        if self.research_audit_service is not None:
+            self.research_audit_service.create(
+                research_run_id=research_run.id,
+                event_type="research_completed",
+            )
 
         return result

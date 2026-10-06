@@ -9,6 +9,7 @@ from app.services.research_execution import ResearchExecutionService
 def test_research_execution_marks_run_started_and_completed():
     research_agent = Mock()
     research_run_service = Mock()
+    research_audit_service = Mock()
 
     research_run = Mock()
     research_run_service.create.return_value = research_run
@@ -19,6 +20,7 @@ def test_research_execution_marks_run_started_and_completed():
     service = ResearchExecutionService(
         research_agent=research_agent,
         research_run_service=research_run_service,
+        research_audit_service=research_audit_service,
     )
 
     result = service.research(
@@ -46,6 +48,17 @@ def test_research_execution_marks_run_started_and_completed():
     )
     research_run_service.mark_error.assert_not_called()
 
+    research_audit_service.create.assert_any_call(
+        research_run_id=research_run.id,
+        event_type="research_started",
+    )
+    research_audit_service.create.assert_any_call(
+        research_run_id=research_run.id,
+        event_type="research_completed",
+    )
+
+    assert research_audit_service.create.call_count == 2
+
     research_agent.research.assert_called_once_with(
         account_id=42,
         recipient_email="person@example.com",
@@ -57,6 +70,7 @@ def test_research_execution_marks_run_started_and_completed():
 def test_research_execution_marks_run_failed_when_agent_raises():
     research_agent = Mock()
     research_run_service = Mock()
+    research_audit_service = Mock()
 
     research_run = Mock()
     research_run_service.create.return_value = research_run
@@ -68,6 +82,7 @@ def test_research_execution_marks_run_failed_when_agent_raises():
     service = ResearchExecutionService(
         research_agent=research_agent,
         research_run_service=research_run_service,
+        research_audit_service=research_audit_service,
     )
 
     with pytest.raises(RuntimeError, match="Research provider failed."):
@@ -85,10 +100,25 @@ def test_research_execution_marks_run_failed_when_agent_raises():
     )
     research_run_service.mark_success.assert_not_called()
 
+    research_audit_service.create.assert_any_call(
+        research_run_id=research_run.id,
+        event_type="research_started",
+    )
+    research_audit_service.create.assert_any_call(
+        research_run_id=research_run.id,
+        event_type="research_failed",
+    )
+
+    assert research_audit_service.create.call_count == 2
+
+    failed_call = research_audit_service.create.call_args_list[1]
+    assert "Research provider failed." not in str(failed_call.kwargs)
+
 
 def test_research_execution_new_recipient_tracks_lifecycle():
     research_agent = Mock()
     research_run_service = Mock()
+    research_audit_service = Mock()
 
     research_run = Mock()
     research_run_service.create.return_value = research_run
@@ -99,6 +129,7 @@ def test_research_execution_new_recipient_tracks_lifecycle():
     service = ResearchExecutionService(
         research_agent=research_agent,
         research_run_service=research_run_service,
+        research_audit_service=research_audit_service,
     )
 
     result = service.research_new_recipient(
