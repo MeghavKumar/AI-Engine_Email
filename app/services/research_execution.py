@@ -55,7 +55,6 @@ class ResearchExecutionService:
         except Exception as exc:
             self.research_run_service.mark_error(
                 research_run,
-                str(exc),
             )
 
             if self.research_audit_service is not None:
@@ -113,7 +112,6 @@ class ResearchExecutionService:
         except Exception as exc:
             self.research_run_service.mark_error(
                 research_run,
-                str(exc),
             )
 
             if self.research_audit_service is not None:

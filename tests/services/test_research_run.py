@@ -92,13 +92,12 @@ def test_mark_error_research_run():
 
         service.mark_error(
             research_run,
-            "Research provider failed.",
             completed_at=completed_at,
         )
 
         assert research_run.status == "failed"
         assert research_run.completed_at == completed_at
-        assert research_run.error_message == "Research provider failed."
+        assert research_run.error_message is None
 
         session.delete(research_run)
         session.commit()

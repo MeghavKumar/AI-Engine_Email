@@ -77,7 +77,6 @@ class ResearchRunRepository:
     def mark_error(
         self,
         research_run: ResearchRun,
-        error_message: str,
         completed_at: datetime | None = None,
     ) -> ResearchRun:
         research_run.status = "failed"
@@ -86,7 +85,7 @@ class ResearchRunRepository:
             if completed_at is not None
             else datetime.now(timezone.utc)
         )
-        research_run.error_message = error_message
+        research_run.error_message = None
         self.session.flush()
 
         return research_run

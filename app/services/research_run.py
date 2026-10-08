@@ -57,13 +57,11 @@ class ResearchRunService:
     def mark_error(
         self,
         research_run: ResearchRun,
-        error_message: str,
         *,
         completed_at: datetime | None = None,
     ) -> ResearchRun:
-        """Mark a research run as failed."""
+        """Mark a research run as failed without persisting exception content."""
         return self.repository.mark_error(
             research_run,
-            error_message,
             completed_at=completed_at,
         )

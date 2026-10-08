@@ -146,7 +146,7 @@ def test_mark_success_sets_completed_status_and_timestamp():
         session.commit()
 
 
-def test_mark_error_sets_failed_status_and_error_message():
+def test_mark_error_sets_failed_status_without_persisting_error_content():
     completed_at = datetime(
         2026,
         10,
@@ -178,12 +178,11 @@ def test_mark_error_sets_failed_status_and_error_message():
 
         result = repository.mark_error(
             research_run,
-            "temporary research provider failure",
             completed_at=completed_at,
         )
 
         assert result.status == "failed"
-        assert result.error_message == "temporary research provider failure"
+        assert result.error_message is None
         assert result.completed_at == completed_at
 
         session.commit()
@@ -192,7 +191,7 @@ def test_mark_error_sets_failed_status_and_error_message():
 
         assert loaded is not None
         assert loaded.status == "failed"
-        assert loaded.error_message == "temporary research provider failure"
+        assert loaded.error_message is None
 
         session.delete(loaded)
         session.flush()

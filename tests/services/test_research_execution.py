@@ -76,7 +76,7 @@ def test_research_execution_marks_run_failed_when_agent_raises():
     research_run_service.create.return_value = research_run
 
     research_agent.research.side_effect = RuntimeError(
-        "Research provider failed."
+        "Research provider failed: SECRET_EMAIL_BODY person@example.com"
     )
 
     service = ResearchExecutionService(
@@ -85,7 +85,7 @@ def test_research_execution_marks_run_failed_when_agent_raises():
         research_audit_service=research_audit_service,
     )
 
-    with pytest.raises(RuntimeError, match="Research provider failed."):
+    with pytest.raises(RuntimeError, match="Research provider failed"):
         service.research(
             account_id=42,
             recipient_email="person@example.com",
@@ -96,7 +96,6 @@ def test_research_execution_marks_run_failed_when_agent_raises():
     )
     research_run_service.mark_error.assert_called_once_with(
         research_run,
-        "Research provider failed.",
     )
     research_run_service.mark_success.assert_not_called()
 
