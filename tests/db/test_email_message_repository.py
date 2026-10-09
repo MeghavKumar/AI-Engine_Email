@@ -291,3 +291,57 @@ def test_list_by_thread_enforces_limit():
 
     with pytest.raises(ValueError, match="limit must be at least 1"):
         repository.list_by_thread(account_id=1, thread_id=1, limit=0)
+
+
+def test_list_by_thread_limit_returns_most_recent_messages():
+    from app.db.repositories.email_thread import EmailThreadRepository
+
+    with SessionLocal() as session:
+        thread_repository = EmailThreadRepository(session)
+        message_repository = EmailMessageRepository(session)
+
+        thread = thread_repository.create(
+            account_id=1,
+            provider="gmail",
+            provider_thread_id="thread-history-limit-1",
+            subject="Bounded history",
+        )
+        session.flush()
+
+        messages = []
+        try:
+            for day in range(1, 5):
+                message = message_repository.create(
+                    account_id=1,
+                    provider="gmail",
+                    provider_message_id=f"thread-history-limit-{day}",
+                    sender_name="Sender",
+                    sender_email="sender@example.com",
+                    subject=f"Message {day}",
+                    body_text=f"Body {day}",
+                    received_at=datetime(2026, 1, day, tzinfo=timezone.utc),
+                    is_read=True,
+                    has_attachments=False,
+                    thread_id=thread.id,
+                )
+                messages.append(message)
+
+            session.commit()
+
+            found = message_repository.list_by_thread(
+                account_id=1,
+                thread_id=thread.id,
+                limit=2,
+            )
+
+            assert [message.id for message in found] == [
+                messages[2].id,
+                messages[3].id,
+            ]
+            assert [message.subject for message in found] == [
+                "Message 3",
+                "Message 4",
+            ]
+        finally:
+            session.delete(thread)
+            session.commit()
