@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from app.db.repositories.email_message import EmailMessageRepository
 from app.db.session import SessionLocal
 
@@ -212,3 +214,80 @@ def test_find_by_recipient_email_returns_matching_non_deleted_messages():
         session.flush()
         session.delete(account)
         session.commit()
+
+
+def test_list_by_thread_returns_chronological_non_deleted_messages():
+    from app.db.repositories.email_thread import EmailThreadRepository
+
+    with SessionLocal() as session:
+        message_repository = EmailMessageRepository(session)
+        thread_repository = EmailThreadRepository(session)
+
+        thread = thread_repository.create(
+            account_id=1,
+            provider="gmail",
+            provider_thread_id="repository-thread-history-1",
+            subject="Thread history",
+        )
+        session.flush()
+
+        older = message_repository.create(
+            account_id=1,
+            provider="gmail",
+            provider_message_id="thread-history-older",
+            sender_name="Alice",
+            sender_email="alice@example.com",
+            subject="First",
+            body_text="First message",
+            received_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            is_read=True,
+            has_attachments=False,
+            thread_id=thread.id,
+        )
+        newer = message_repository.create(
+            account_id=1,
+            provider="gmail",
+            provider_message_id="thread-history-newer",
+            sender_name="Bob",
+            sender_email="bob@example.com",
+            subject="Second",
+            body_text="Second message",
+            received_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            is_read=True,
+            has_attachments=False,
+            thread_id=thread.id,
+        )
+        deleted = message_repository.create(
+            account_id=1,
+            provider="gmail",
+            provider_message_id="thread-history-deleted",
+            sender_name="Carol",
+            sender_email="carol@example.com",
+            subject="Deleted",
+            body_text="Deleted message",
+            received_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+            is_read=True,
+            has_attachments=False,
+            thread_id=thread.id,
+        )
+
+        try:
+            message_repository.mark_deleted(deleted)
+            session.commit()
+
+            found = message_repository.list_by_thread(
+                account_id=1,
+                thread_id=thread.id,
+            )
+
+            assert [message.id for message in found] == [older.id, newer.id]
+        finally:
+            session.delete(thread)
+            session.commit()
+
+
+def test_list_by_thread_enforces_limit():
+    repository = EmailMessageRepository(session=None)
+
+    with pytest.raises(ValueError, match="limit must be at least 1"):
+        repository.list_by_thread(account_id=1, thread_id=1, limit=0)

@@ -27,6 +27,33 @@ class EmailMessageRepository:
             .first()
         )
 
+    def list_by_thread(
+        self,
+        *,
+        account_id: int,
+        thread_id: int,
+        limit: int = 100,
+    ) -> list[EmailMessageRecord]:
+        """List non-deleted messages in a thread in chronological order."""
+
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+
+        return (
+            self.session.query(EmailMessageRecord)
+            .filter(
+                EmailMessageRecord.account_id == account_id,
+                EmailMessageRecord.thread_id == thread_id,
+                EmailMessageRecord.is_deleted.is_(False),
+            )
+            .order_by(
+                EmailMessageRecord.received_at.asc(),
+                EmailMessageRecord.id.asc(),
+            )
+            .limit(limit)
+            .all()
+        )
+
     def find_by_recipient_email(
         self,
         *,
