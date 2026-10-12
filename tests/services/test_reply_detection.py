@@ -145,3 +145,55 @@ def test_detect_reply_email_address_case_insensitively():
     assert result.suggested_reply_to == ["person@example.com"]
     assert result.suggested_reply_cc == []
     assert result.requires_recipient_confirmation is True
+
+def test_detect_reply_from_outlook_graph_message():
+    provider = FakeEmailProvider(
+        [
+            {
+                "id": "sent-123",
+                "from": {
+                    "emailAddress": {
+                        "address": ACCOUNT_EMAIL,
+                    }
+                },
+            },
+            {
+                "id": "reply-456",
+                "from": {
+                    "emailAddress": {
+                        "name": "Person",
+                        "address": "person@example.com",
+                    }
+                },
+                "toRecipients": [
+                    {
+                        "emailAddress": {
+                            "address": ACCOUNT_EMAIL,
+                        }
+                    }
+                ],
+                "ccRecipients": [
+                    {
+                        "emailAddress": {
+                            "address": "colleague@example.com",
+                        }
+                    }
+                ],
+            },
+        ]
+    )
+
+    service = ReplyDetectionService(provider)
+    result = service.detect_reply(
+        account_id="account-123",
+        thread_id="thread-456",
+        account_email=ACCOUNT_EMAIL,
+    )
+
+    assert result.replied is True
+    assert result.reply_message_id == "reply-456"
+    assert result.reply_from == "person@example.com"
+    assert result.reply_to == [ACCOUNT_EMAIL]
+    assert result.reply_cc == ["colleague@example.com"]
+    assert result.suggested_reply_to == ["person@example.com"]
+    assert result.requires_recipient_confirmation is True

@@ -57,16 +57,23 @@ class ReplyDetectionService:
             requires_recipient_confirmation=True,
         )
 
+
     def _get_sender_email(self, message: dict) -> str | None:
         headers = self._get_headers(message)
-
         sender = headers.get("from")
-        if not sender:
-            return None
 
-        _, address = parseaddr(sender)
+        if sender:
+            _, address = parseaddr(sender)
+            if address:
+                return address
 
-        return address or None
+        email_address = (
+            message.get("from", {})
+            .get("emailAddress", {})
+            .get("address")
+        )
+        return email_address or None
+
 
     def _get_addresses(
         self,
@@ -76,10 +83,29 @@ class ReplyDetectionService:
         headers = self._get_headers(message)
         value = headers.get(header_name, "")
 
+        if value:
+            addresses = [
+                address
+                for _, address in getaddresses([value])
+                if address
+            ]
+            if addresses:
+                return addresses
+
+        outlook_field = {
+            "to": "toRecipients",
+            "cc": "ccRecipients",
+        }.get(header_name)
+
+        if not outlook_field:
+            return []
+
         return [
             address
-            for _, address in getaddresses([value])
-            if address
+            for recipient in message.get(outlook_field, [])
+            if (
+                address := recipient.get("emailAddress", {}).get("address")
+            )
         ]
 
     def _get_headers(self, message: dict) -> dict[str, str]:
