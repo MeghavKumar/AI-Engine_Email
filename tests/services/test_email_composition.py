@@ -99,3 +99,93 @@ def test_composition_does_not_call_composer_if_context_retrieval_fails():
         raise AssertionError("Expected context retrieval to fail")
 
     composer.compose.assert_not_called()
+
+
+def test_composition_includes_structured_research_evidence():
+    from datetime import datetime, timezone
+
+    from app.schemas.research import (
+        ResearchAssessment,
+        ResearchEvidence,
+        ResearchResult,
+        ResearchSourceType,
+    )
+    from app.schemas.email import EmailDraft
+
+    composer = Mock()
+    context_service = Mock()
+    context_service.build_context.return_value = {
+        "account_id": 42,
+        "thread_id": 17,
+        "messages": [],
+        "truncated": False,
+    }
+    expected_draft = EmailDraft(
+        to=["recipient@example.com"],
+        subject="Project update",
+        body="Here is the update.",
+        confidence=0.9,
+    )
+    composer.compose.return_value = expected_draft
+
+    research = ResearchResult(
+        evidence=[
+            ResearchEvidence(
+                source_type=ResearchSourceType.MAILBOX,
+                source_reference="message-123",
+                evidence="The recipient previously requested a project update.",
+                observed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+        ],
+        assessment=ResearchAssessment(
+            assessment="A concise update is relevant.",
+            confidence=0.85,
+        ),
+    )
+
+    service = EmailCompositionService(
+        composer=composer,
+        thread_context_service=context_service,
+    )
+
+    result = service.compose_for_thread(
+        prompt="Draft a project update.",
+        account_id=42,
+        thread_id=17,
+        research_result=research,
+    )
+
+    assert result == expected_draft
+
+    passed_context = composer.compose.call_args.kwargs["context"]
+    assert passed_context["account_id"] == 42
+    assert passed_context["thread_id"] == 17
+    assert passed_context["research"]["evidence"][0]["source_reference"] == (
+        "message-123"
+    )
+    assert passed_context["research"]["assessment"]["confidence"] == 0.85
+
+
+def test_composition_omits_research_when_not_provided():
+    composer = Mock()
+    context_service = Mock()
+    context_service.build_context.return_value = {
+        "account_id": 7,
+        "thread_id": 9,
+        "messages": [],
+        "truncated": False,
+    }
+
+    service = EmailCompositionService(
+        composer=composer,
+        thread_context_service=context_service,
+    )
+
+    service.compose_for_thread(
+        prompt="Draft a reply.",
+        account_id=7,
+        thread_id=9,
+    )
+
+    passed_context = composer.compose.call_args.kwargs["context"]
+    assert "research" not in passed_context

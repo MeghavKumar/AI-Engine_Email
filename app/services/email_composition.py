@@ -1,9 +1,11 @@
 from app.agents.composer import EmailComposer
+from app.schemas.email import EmailDraft
+from app.schemas.research import ResearchResult
 from app.services.thread_context import ThreadContextService
 
 
 class EmailCompositionService:
-    """Compose email drafts with bounded context from an existing thread."""
+    """Compose validated drafts using bounded thread and research context."""
 
     def __init__(
         self,
@@ -19,10 +21,11 @@ class EmailCompositionService:
         prompt: str,
         account_id: int,
         thread_id: int,
+        research_result: ResearchResult | None = None,
         max_messages: int = 10,
         max_chars: int = 12000,
-    ):
-        """Build thread context and pass it to the validated email composer."""
+    ) -> EmailDraft:
+        """Build bounded context and return a validated draft without sending."""
 
         context = self.thread_context_service.build_context(
             account_id=account_id,
@@ -30,6 +33,12 @@ class EmailCompositionService:
             max_messages=max_messages,
             max_chars=max_chars,
         )
+
+        # Keep the existing context structure and add research only when supplied.
+        context = dict(context)
+
+        if research_result is not None:
+            context["research"] = research_result.model_dump(mode="json")
 
         return self.composer.compose(
             prompt=prompt,

@@ -111,3 +111,34 @@ def test_composer_accepts_json_code_block():
     assert result.subject == "Meeting follow-up"
     assert result.body == "Thank you for the meeting."
     assert result.confidence == 0.91
+
+
+def test_composer_wraps_unprotected_provider():
+    from app.providers.ai.privacy_boundary import PrivacyBoundaryProvider
+
+    composer = EmailComposer(FakeAIProvider('{"invalid": true}'))
+
+    assert isinstance(composer.ai_provider, PrivacyBoundaryProvider)
+
+
+def test_composer_does_not_double_wrap_protected_provider():
+    from app.providers.ai.privacy_boundary import PrivacyBoundaryProvider
+
+    underlying = FakeAIProvider(
+        """
+        {
+            "to": ["recipient@example.com"],
+            "cc": [],
+            "bcc": [],
+            "subject": "Project update",
+            "body": "Here is the update.",
+            "attachment_required": false,
+            "attachment_names": [],
+            "confidence": 0.9
+        }
+        """
+    )
+    protected = PrivacyBoundaryProvider(provider=underlying)
+    composer = EmailComposer(protected)
+
+    assert composer.ai_provider is protected
