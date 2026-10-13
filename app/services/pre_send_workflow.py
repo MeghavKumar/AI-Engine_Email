@@ -33,6 +33,7 @@ class PreSendWorkflowService:
         recipient_decision: RecipientVerificationDecision,
         attachment_result: AttachmentVerificationResult,
         security_assessment: SecurityAssessment,
+        original_thread_subject: str | None = None,
     ) -> EmailWorkflowState:
         """Create the initial pre-send workflow state."""
 
@@ -43,6 +44,7 @@ class PreSendWorkflowService:
             recipient_verification_decision=recipient_decision,
             attachment_verification_result=attachment_result,
             security_assessment=security_assessment,
+            original_thread_subject=original_thread_subject,
         )
 
     def validate(

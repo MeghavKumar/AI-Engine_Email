@@ -39,6 +39,9 @@ class EmailWorkflowState(BaseModel):
 
     draft: EmailDraft | None = None
 
+    # Set this when the draft replies to an existing thread.
+    original_thread_subject: str | None = None
+
     recipient_verification_request: (
         RecipientVerificationRequest | None
     ) = None
@@ -64,5 +67,10 @@ class EmailWorkflowState(BaseModel):
     send_approval_request: ApprovalRequest | None = None
 
     send_approval_decision: ApprovalDecision | None = None
+
+    subject_change_approval_request: ApprovalRequest | None = None
+    subject_change_approval_decision: ApprovalDecision | None = None
+    subject_change_approval_fingerprint: str | None = None
+    approved_draft_fingerprint: str | None = None
 
     blocked_reason: str | None = None

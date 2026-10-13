@@ -20,6 +20,7 @@ from app.schemas.workflow import (
     EmailWorkflowStatus,
 )
 from app.services.email_send import EmailSendService
+from app.services.draft_integrity import draft_fingerprint
 
 
 class FakeEmailProvider(EmailProvider):
@@ -113,7 +114,7 @@ def make_approved_state() -> EmailWorkflowState:
         reasons=[],
     )
 
-    return EmailWorkflowState(
+    state = EmailWorkflowState(
         workflow_id="workflow-001",
         status=EmailWorkflowStatus.READY_TO_SEND,
         draft=draft,
@@ -126,6 +127,8 @@ def make_approved_state() -> EmailWorkflowState:
             "decided_by": "user-001",
         },
     )
+    state.approved_draft_fingerprint = draft_fingerprint(state)
+    return state
 
 
 def test_approved_workflow_sends_message():
@@ -185,3 +188,22 @@ def test_rejected_approval_cannot_send():
         )
 
     assert provider.sent_messages == []
+
+
+def test_modified_draft_cannot_be_sent_after_approval():
+    provider = FakeEmailProvider()
+    service = EmailSendService(provider)
+    state = make_approved_state()
+
+    state.draft.body = "Changed after approval."
+
+    with pytest.raises(
+        ValueError,
+        match="Draft changed after approval",
+    ):
+        service.send(state=state, account_id="account-001")
+
+    assert provider.sent_messages == []
+    assert state.status == EmailWorkflowStatus.SEND_APPROVAL
+    assert state.send_approval_decision is None
+    assert state.approved_draft_fingerprint is None

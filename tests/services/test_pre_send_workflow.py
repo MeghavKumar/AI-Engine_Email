@@ -137,3 +137,25 @@ def test_request_send_approval():
     assert request.request_id == "send-001"
     assert request.requested_by == "user-001"
     assert state.send_approval_request == request
+
+
+def test_create_state_preserves_original_thread_subject():
+    service = PreSendWorkflowService()
+
+    (
+        draft,
+        recipient_decision,
+        attachment_result,
+        security_assessment,
+    ) = make_inputs()
+
+    state = service.create_state(
+        workflow_id="workflow-thread-subject",
+        draft=draft,
+        recipient_decision=recipient_decision,
+        attachment_result=attachment_result,
+        security_assessment=security_assessment,
+        original_thread_subject="Original project discussion",
+    )
+
+    assert state.original_thread_subject == "Original project discussion"
