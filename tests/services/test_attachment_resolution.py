@@ -69,3 +69,30 @@ def test_rejects_attachment_outside_directory(tmp_path: Path):
             attachment_names=["../secret.txt"],
             attachment_directory=attachment_directory,
         )
+
+
+def test_rejects_symlink_outside_attachment_directory(tmp_path: Path):
+    attachment_directory = tmp_path / "attachments"
+    attachment_directory.mkdir()
+
+    outside_file = tmp_path / "secret.txt"
+    outside_file.write_text("private content")
+
+    symlink = attachment_directory / "linked-secret.txt"
+
+    try:
+        symlink.symlink_to(outside_file)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Symlink creation is unavailable: {exc}")
+
+    service = AttachmentResolutionService()
+
+    with pytest.raises(
+        ValueError,
+        match="outside the attachment directory",
+    ):
+        service.resolve(
+            attachment_names=["linked-secret.txt"],
+            attachment_directory=attachment_directory,
+        )
+

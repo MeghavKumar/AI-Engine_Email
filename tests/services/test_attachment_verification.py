@@ -1,3 +1,5 @@
+import pytest
+
 from app.schemas.attachment import AttachmentVerificationStatus
 from app.services.attachment_verification import (
     AttachmentVerificationService,
@@ -88,3 +90,31 @@ def test_multiple_missing_attachments():
         "budget.xlsx",
         "presentation.pptx",
     ]
+
+
+
+
+
+
+
+@pytest.mark.parametrize(
+    "required_attachments",
+    [
+        [],
+        [""],
+        ["   "],
+    ],
+)
+def test_required_attachments_must_have_names(required_attachments):
+    service = AttachmentVerificationService()
+
+    with pytest.raises(
+        ValueError,
+        match="Required attachment names must be provided",
+    ):
+        service.verify(
+            required=True,
+            required_attachments=required_attachments,
+            available_attachments=["report.pdf"],
+        )
+

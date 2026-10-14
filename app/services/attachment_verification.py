@@ -24,10 +24,17 @@ class AttachmentVerificationService:
                 required=False,
                 reason="No attachment is required.",
             )
+        if not required_attachments or any(
+            not name.strip() for name in required_attachments
+        ):
+            raise ValueError(
+                "Required attachment names must be provided and non-empty."
+            )
 
         available_normalized = {
             name.strip().lower()
             for name in available_attachments
+            if name.strip()
         }
 
         missing_attachments = [
